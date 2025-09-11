@@ -30,3 +30,6 @@ go.work.sum
 
 # Config
 configs/config.json
+
+# Backups for testing
+FakeBackups/*
