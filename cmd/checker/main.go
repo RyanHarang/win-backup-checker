@@ -3,27 +3,27 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"path/filepath"
+
+	winbackupchecker "github.com/RyanHarang/win-backup-checker/internal/backup"
 )
 
 func main() {
-    backupRoot := `D:\Backups\WindowsImageBackup` // TODO: make configurable
+	// Config file location
+	configPath := filepath.Join("configs", "config.json")
 
-    err := filepath.Walk(backupRoot, func(path string, info os.FileInfo, err error) error {
-        if err != nil {
-            return err
-        }
+	// Load config
+	cfg, err := winbackupchecker.LoadConfig(configPath)
+	if err != nil {
+		log.Fatalf("Error loading config: %v", err)
+	}
 
-        if info.IsDir() && filepath.Base(path) == "Catalog" {
-            fmt.Println("Found backup catalog at:", path)
-        }
-        return nil
-    })
+	fmt.Println("Loaded config:", cfg)
 
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    fmt.Println("Scan complete.")
+	// Run scan for each path
+	for _, path := range cfg.BackupPaths {
+		if err := winbackupchecker.ScanBackupDir(path); err != nil {
+			log.Printf("Scan failed for %s: %v", path, err)
+		}
+	}
 }
