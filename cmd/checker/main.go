@@ -13,36 +13,53 @@ import (
 )
 
 type RunReport struct {
-	Timestamp string                            `json:"timestamp"`
-	Results   []winbackupchecker.ScanReport     `json:"results"`
+	Timestamp string                        `json:"timestamp"`
+	Results   []winbackupchecker.ScanReport `json:"results"`
 }
 
 func main() {
-	// Flags
 	jsonOnly := flag.Bool("json", false, "Output results as JSON only (no human-readable logs)")
 	jsonOut := flag.String("json-out", "", "Write JSON report to a file (NDJSON format if file already exists)")
+	quiet := flag.Bool("quiet", false, "Suppress all console output (only write to --json-out if provided)")
 	flag.Parse()
 
-	// Config file location
+	// Config location
 	configPath := filepath.Join("configs", "config.json")
 
 	// Load config
 	cfg, err := winbackupchecker.LoadConfig(configPath)
 	if err != nil {
-		log.Fatalf("Error loading config: %v", err)
+		if !*quiet {
+			log.Printf("Error loading config: %v", err)
+		}
+		os.Exit(2)
 	}
 
-	if !*jsonOnly {
+	if !*jsonOnly && !*quiet {
 		fmt.Println("Loaded config:", cfg)
 	}
 
 	allReports := []winbackupchecker.ScanReport{}
+	fatalErrors := []string{}
 
 	// Run scan for each path
 	for _, path := range cfg.BackupPaths {
-		report, err := winbackupchecker.ScanBackupDir(path)
+		report, err := winbackupchecker.ScanBackupDir(path, *quiet)
 		if err != nil {
-			log.Printf("Scan failed for %s: %v", path, err)
+			// Record a fatal error for this path, but keep scanning
+			fatalErrors = append(fatalErrors, fmt.Sprintf("Scan failed for %s: %v", path, err))
+			// Add an empty ScanReport with error info so it shows up in logs
+			allReports = append(allReports, winbackupchecker.ScanReport{
+				Root: path,
+				Reports: []winbackupchecker.BackupReport{
+					{
+						BackupDir: path,
+						Valid:     false,
+						Errors:    []string{err.Error()},
+						CheckedAt: time.Now().Format(time.RFC3339),
+					},
+				},
+			})
 			continue
 		}
 		allReports = append(allReports, *report)
@@ -54,50 +71,85 @@ func main() {
 		Results:   allReports,
 	}
 
-	// Marshal JSON
 	jsonData, err := json.MarshalIndent(runReport, "", "  ")
 	if err != nil {
-		log.Fatalf("Failed to marshal report: %v", err)
+		if !*quiet {
+			log.Printf("Failed to marshal report: %v", err)
+		}
+		os.Exit(2)
 	}
 
-	// Console output
-	if *jsonOnly {
-		fmt.Println(string(jsonData))
-	} else {
-		fmt.Println("\n===== JSON Validation Report =====")
-		fmt.Println(string(jsonData))
+	// Console output if not quiet
+	if !*quiet {
+		if *jsonOnly {
+			fmt.Println(string(jsonData))
+		} else {
+			fmt.Println("\n===== JSON Validation Report =====")
+			fmt.Println(string(jsonData))
+		}
 	}
 
 	// Optional file output
 	if *jsonOut != "" {
 		line, err := json.Marshal(runReport)
 		if err != nil {
-			log.Fatalf("Failed to marshal run report for file output: %v", err)
+			if !*quiet {
+				log.Printf("Failed to marshal run report for file output: %v", err)
+			}
+			os.Exit(2)
 		}
 		f, err := os.OpenFile(*jsonOut, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 		if err != nil {
-			log.Fatalf("Failed to open JSON output file: %v", err)
+			if !*quiet {
+				log.Printf("Failed to open JSON output file: %v", err)
+			}
+			os.Exit(2)
 		}
 		defer f.Close()
 
 		if _, err := f.Write(append(line, '\n')); err != nil {
-			log.Fatalf("Failed to write to JSON output file: %v", err)
+			if !*quiet {
+				log.Printf("Failed to write to JSON output file: %v", err)
+			}
+			os.Exit(2)
 		}
 
-		if !*jsonOnly {
+		if !*jsonOnly && !*quiet {
 			fmt.Printf("Appended JSON report to %s\n", *jsonOut)
 		}
 	}
+
+	os.Exit(decideExitCode(fatalErrors, allReports))
+}
+
+func decideExitCode(fatalErrors []string, allReports []winbackupchecker.ScanReport) int {
+	if len(fatalErrors) > 0 {
+		return 2
+	}
+	for _, sr := range allReports {
+		for _, br := range sr.Reports {
+			if !br.Valid {
+				return 1
+			}
+		}
+	}
+	return 0
 }
 
 /*
 Usage:
-  go run ./cmd/checker/                            	# Human-readable logs + JSON summary
-  go run ./cmd/checker/ --json                     	# JSON only (no extra logs)
-  go run ./cmd/checker/ --json-out=logs.json     		# Appends JSON report to logs.json
-  go run ./cmd/checker/ --json --json-out=logs.json # JSON only, also appends to logs.json
+  go run ./cmd/checker/                               # Human-readable logs + JSON summary
+  go run ./cmd/checker/ --json                        # JSON only (to console)
+  go run ./cmd/checker/ --json-out=logs.json          # Appends JSON report to logs.json
+  go run ./cmd/checker/ --json --json-out=logs.json   # JSON only, also appends to logs.json
+  go run ./cmd/checker/ --quiet --json-out=logs.json  # No console logs, only writes to file
 
-Note:
+Exit codes:
+  0 = all backups valid
+  1 = some backups invalid
+  2 = fatal error (config, scan, or IO failure)
+
+Notes:
   - The JSON log file uses NDJSON (one JSON object per line).
-  - Each run is timestamped so you can track history.
+  - Each run is timestamped.
 */

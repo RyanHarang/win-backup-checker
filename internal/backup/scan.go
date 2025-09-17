@@ -15,13 +15,16 @@ type BackupReport struct {
 }
 
 type ScanReport struct {
-	Root    string          `json:"root"`
-	Reports []BackupReport  `json:"reports"`
+	Root    string         `json:"root"`
+	Reports []BackupReport `json:"reports"`
 }
 
 // ScanBackupDir scans a root directory and returns a JSON-friendly report.
-func ScanBackupDir(root string) (*ScanReport, error) {
-	fmt.Println("Scanning backup root:", root)
+// If quiet = true, all console printing is suppressed.
+func ScanBackupDir(root string, quiet bool) (*ScanReport, error) {
+	if !quiet {
+		fmt.Println("Scanning backup root:", root)
+	}
 
 	report := &ScanReport{Root: root, Reports: []BackupReport{}}
 
@@ -32,15 +35,19 @@ func ScanBackupDir(root string) (*ScanReport, error) {
 
 		if filepath.Base(path) == "BackupSpecs.xml" {
 			backupSetDir := filepath.Dir(path)
-			fmt.Printf("Found backup set: %s\n", backupSetDir)
+			if !quiet {
+				fmt.Printf("Found backup set: %s\n", backupSetDir)
+			}
 
 			rep := validateBackupSet(backupSetDir)
 			report.Reports = append(report.Reports, rep)
 
-			if rep.Valid {
-				fmt.Println("✅ Backup set looks valid.")
-			} else {
-				fmt.Printf("❌ Backup set invalid: %v\n", rep.Errors)
+			if !quiet {
+				if rep.Valid {
+					fmt.Println("✅ Backup set looks valid.")
+				} else {
+					fmt.Printf("❌ Backup set invalid: %v\n", rep.Errors)
+				}
 			}
 		}
 		return nil

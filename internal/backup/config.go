@@ -11,7 +11,7 @@ type Config struct {
 	CheckHash   bool     `json:"check_hash"`
 }
 
-// LoadConfig loads the JSON config file from the given path.
+// LoadConfig loads JSON config file from given path
 func LoadConfig(path string) (*Config, error) {
 	file, err := os.Open(path)
 	if err != nil {
