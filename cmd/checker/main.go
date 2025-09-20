@@ -18,6 +18,7 @@ type RunReport struct {
 }
 
 func main() {
+	mode := flag.String("mode", "files", "Backup type: 'image' (system image backups) or 'files' (file/folder backups)")
 	jsonOnly := flag.Bool("json", false, "Output results as JSON only (no human-readable logs)")
 	jsonOut := flag.String("json-out", "", "Write JSON report to a file (NDJSON format if file already exists)")
 	quiet := flag.Bool("quiet", false, "Suppress all console output (only write to --json-out if provided)")
@@ -26,7 +27,6 @@ func main() {
 	// Config location
 	configPath := filepath.Join("configs", "config.json")
 
-	// Load config
 	cfg, err := winbackupchecker.LoadConfig(configPath)
 	if err != nil {
 		if !*quiet {
@@ -44,11 +44,27 @@ func main() {
 
 	// Run scan for each path
 	for _, path := range cfg.BackupPaths {
-		report, err := winbackupchecker.ScanBackupDir(path, *quiet)
+		var report *winbackupchecker.ScanReport
+		var err error
+
+		switch *mode {
+		case "image":
+			// Placeholder until you port the old image logic here
+			if !*quiet {
+				log.Printf("Image mode not yet implemented in this branch")
+			}
+			continue
+		case "files":
+			report, err = winbackupchecker.ScanFileBackupDir(path, *quiet)
+		default:
+			if !*quiet {
+				log.Printf("Unknown mode: %s", *mode)
+			}
+			os.Exit(2)
+		}
+
 		if err != nil {
-			// Record a fatal error for this path, but keep scanning
 			fatalErrors = append(fatalErrors, fmt.Sprintf("Scan failed for %s: %v", path, err))
-			// Add an empty ScanReport with error info so it shows up in logs
 			allReports = append(allReports, winbackupchecker.ScanReport{
 				Root: path,
 				Reports: []winbackupchecker.BackupReport{
@@ -65,7 +81,6 @@ func main() {
 		allReports = append(allReports, *report)
 	}
 
-	// Wrap in run-level report with timestamp
 	runReport := RunReport{
 		Timestamp: time.Now().Format(time.RFC3339),
 		Results:   allReports,
@@ -138,11 +153,12 @@ func decideExitCode(fatalErrors []string, allReports []winbackupchecker.ScanRepo
 
 /*
 Usage:
-  go run ./cmd/checker/                               # Human-readable logs + JSON summary
-  go run ./cmd/checker/ --json                        # JSON only (to console)
-  go run ./cmd/checker/ --json-out=logs.json          # Appends JSON report to logs.json
-  go run ./cmd/checker/ --json --json-out=logs.json   # JSON only, also appends to logs.json
-  go run ./cmd/checker/ --quiet --json-out=logs.json  # No console logs, only writes to file
+  go run ./cmd/checker/ --mode=files                 # Check file/folder backups
+  go run ./cmd/checker/ --mode=image                 # (Placeholder) system image backups
+  go run ./cmd/checker/ --json                       # JSON only (printed to console)
+  go run ./cmd/checker/ --json-out=logs.json         # Append JSON report to logs.json
+  go run ./cmd/checker/ --json --json-out=logs.json  # JSON only, also appends to logs.json
+  go run ./cmd/checker/ --quiet --json-out=logs.json # Silent, writes JSON only to file
 
 Exit codes:
   0 = all backups valid
@@ -150,6 +166,8 @@ Exit codes:
   2 = fatal error (config, scan, or IO failure)
 
 Notes:
+  - Config is read from ./configs/config.json
+  - In this branch, only `--mode=files` is implemented
   - The JSON log file uses NDJSON (one JSON object per line).
   - Each run is timestamped.
 */
