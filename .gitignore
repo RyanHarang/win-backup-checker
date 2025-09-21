@@ -33,6 +33,7 @@ configs/config.json
 
 # Backups for testing
 FakeBackups/*
+Backups/*
 
 # Logs for testing
 logs.json
