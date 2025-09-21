@@ -49,7 +49,7 @@ func main() {
 
 		switch *mode {
 		case "image":
-			// Placeholder until you port the old image logic here
+			// Placeholder until ported old image logic here
 			if !*quiet {
 				log.Printf("Image mode not yet implemented in this branch")
 			}

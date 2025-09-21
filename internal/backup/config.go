@@ -12,7 +12,7 @@ type Config struct {
 	CheckHash   bool     `json:"check_hash"`
 }
 
-// BackupReport represents validation details for a single backup folder
+// BackupReport represents validation details for single backup folder
 type BackupReport struct {
 	BackupDir string   `json:"backup_dir"`
 	Valid     bool     `json:"valid"`
@@ -20,7 +20,7 @@ type BackupReport struct {
 	CheckedAt string   `json:"checked_at"`
 }
 
-// ScanReport represents the results for one root path
+// ScanReport represents results for one root path
 type ScanReport struct {
 	Root    string         `json:"root"`
 	Reports []BackupReport `json:"reports"`
