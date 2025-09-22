@@ -15,7 +15,18 @@ func ScanFileBackupDir(root string, quiet bool) (*ScanReport, error) {
 
 	report := &ScanReport{Root: root, Reports: []BackupReport{}}
 
-	// Each backup set is usually a folder under root
+	// Root must have MediaID.bin
+	if !fileExists(filepath.Join(root, "MediaID.bin")) {
+		report.Reports = append(report.Reports, BackupReport{
+			BackupDir: root,
+			Valid:     false,
+			Errors:    []string{"missing MediaID.bin at root"},
+			CheckedAt: time.Now().Format(time.RFC3339),
+		})
+		return report, nil
+	}
+
+	// Scan each machine directory (like RY/)
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read backup root: %w", err)
@@ -25,47 +36,48 @@ func ScanFileBackupDir(root string, quiet bool) (*ScanReport, error) {
 		if !entry.IsDir() {
 			continue
 		}
-
-		backupDir := filepath.Join(root, entry.Name())
-		br := validateFileBackupSet(backupDir, quiet)
-		report.Reports = append(report.Reports, br)
-
-		if !quiet {
-			if br.Valid {
-				fmt.Println("✅ File backup set looks valid:", backupDir)
-			} else {
-				fmt.Printf("❌ File backup set invalid: %s\n   Errors: %v\n", backupDir, br.Errors)
+		machineDir := filepath.Join(root, entry.Name())
+		backupSets, _ := os.ReadDir(machineDir)
+		for _, set := range backupSets {
+			if !set.IsDir() || filepath.Ext(set.Name()) != "" {
+				continue
 			}
+			if !quiet {
+				fmt.Println("Found backup set:", set.Name())
+			}
+			setPath := filepath.Join(machineDir, set.Name())
+			br := validateFileBackupSet(setPath, quiet)
+			report.Reports = append(report.Reports, br)
 		}
 	}
 
 	return report, nil
 }
 
-func validateFileBackupSet(backupDir string, quiet bool) BackupReport {
+func validateFileBackupSet(setDir string, quiet bool) BackupReport {
 	errors := []string{}
 
-	// Check Catalogs folder
-	catalogDir := filepath.Join(backupDir, "Catalogs")
+	// Check for Catalogs with .wbcat
+	catalogDir := filepath.Join(setDir, "Catalogs")
 	if !dirExists(catalogDir) {
 		errors = append(errors, "missing Catalogs folder")
 	} else {
-		hasCatalog := false
+		hasWbcat := false
 		filepath.Walk(catalogDir, func(path string, info os.FileInfo, err error) error {
-			if err == nil && !info.IsDir() && filepath.Ext(path) == ".wbcat" {
-				hasCatalog = true
+			if !info.IsDir() && filepath.Ext(path) == ".wbcat" {
+				hasWbcat = true
 			}
 			return nil
 		})
-		if !hasCatalog {
+		if !hasWbcat {
 			errors = append(errors, "no .wbcat catalog found")
 		}
 	}
 
-	// Look for .zip backup files
+	// Look for Backup Files folder with zips
 	foundZips := false
-	filepath.Walk(backupDir, func(path string, info os.FileInfo, err error) error {
-		if err == nil && !info.IsDir() && filepath.Ext(path) == ".zip" {
+	filepath.Walk(setDir, func(path string, info os.FileInfo, err error) error {
+		if !info.IsDir() && filepath.Ext(path) == ".zip" {
 			foundZips = true
 			if err := checkZipReadable(path); err != nil {
 				errors = append(errors, fmt.Sprintf("unreadable zip %s: %v", path, err))
@@ -78,7 +90,7 @@ func validateFileBackupSet(backupDir string, quiet bool) BackupReport {
 	}
 
 	return BackupReport{
-		BackupDir: backupDir,
+		BackupDir: setDir,
 		Valid:     len(errors) == 0,
 		Errors:    errors,
 		CheckedAt: time.Now().Format(time.RFC3339),
@@ -91,19 +103,30 @@ func checkZipReadable(path string) error {
 		return err
 	}
 	defer r.Close()
-
-	// Try listing first file
 	if len(r.File) > 0 {
 		f, err := r.File[0].Open()
 		if err != nil {
 			return fmt.Errorf("failed to open first entry: %w", err)
 		}
-		defer f.Close()
+		f.Close()
 	}
 	return nil
 }
 
+// returns true if path exists and is a regular file
+func fileExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
+}
+
+// returns true if path exists and is a directory
 func dirExists(path string) bool {
 	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
 }
