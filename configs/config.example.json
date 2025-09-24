@@ -1,4 +1,9 @@
 {
   "backup_paths": ["D:\\Backups\\Backup"],
-  "check_hash": false
+  "check_hash": false,
+  "deep_validation": true,
+  "max_zip_sample_size": 104857600,
+  "required_catalog_extensions": [".wbcat", ".cat"],
+  "min_backup_age": "1h",
+  "max_backup_age": "90d"
 }
