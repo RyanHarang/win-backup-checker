@@ -42,15 +42,10 @@ go run ./cmd/checker/ --timeout=1h
 go run ./cmd/checker/ --no-email
 ```
 
+---
+
 ## Exit codes:
 
 -   0 = all backups valid
 -   1 = some backups invalid
 -   2 = fatal error (config, scan, or IO failure)
-
-## Email notifications:
-
-#### Gmail:
-
--   [Set up an app password](https://myaccount.google.com/apppasswords)
--   Use the app password in config
