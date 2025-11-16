@@ -7,17 +7,32 @@ import (
 	"time"
 )
 
-type Config struct {
-	BackupPaths              []string `json:"backup_paths"`
-	CheckHash                bool     `json:"check_hash"`
-	DeepValidation           bool     `json:"deep_validation"`
-	MaxZipSampleSize         int64    `json:"max_zip_sample_size"`
-	RequiredCatalogExtensions []string `json:"required_catalog_extensions"`
-	MinBackupAge             string   `json:"min_backup_age"` // Duration string like "24h"
-	MaxBackupAge             string   `json:"max_backup_age"` // Duration string like "30d"
+type EmailConfig struct {
+	Enabled        bool     `json:"enabled"`
+	SMTPHost       string   `json:"smtp_host"`
+	SMTPPort       int      `json:"smtp_port"`
+	From           string   `json:"from"`
+	To             []string `json:"to"`
+	Username       string   `json:"username"`
+	Password       string   `json:"password"`
+	SendOnSuccess  bool     `json:"send_on_success"`
+	SendOnWarnings bool     `json:"send_on_warnings"`
+	SendOnErrors   bool     `json:"send_on_errors"`
+	SubjectPrefix  string   `json:"subject_prefix"`
 }
 
-// ValidationSeverity represents the severity level of validation issues
+type Config struct {
+	BackupPaths               []string     `json:"backup_paths"`
+	CheckHash                 bool         `json:"check_hash"`
+	DeepValidation            bool         `json:"deep_validation"`
+	MaxZipSampleSize          int64        `json:"max_zip_sample_size"`
+	RequiredCatalogExtensions []string     `json:"required_catalog_extensions"`
+	MinBackupAge              string       `json:"min_backup_age"`
+	MaxBackupAge              string       `json:"max_backup_age"`
+	Email                     *EmailConfig `json:"email,omitempty"`
+}
+
+// ValidationSeverity represents severity level of validation issues
 type ValidationSeverity int
 
 const (
@@ -42,37 +57,41 @@ func (s ValidationSeverity) String() string {
 	}
 }
 
+func (s ValidationSeverity) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.String())
+}
+
 // ValidationIssue represents a specific validation problem
 type ValidationIssue struct {
-	Severity    ValidationSeverity `json:"severity"`
-	Message     string             `json:"message"`
-	Path        string             `json:"path,omitempty"`
-	Suggestion  string             `json:"suggestion,omitempty"`
-	CheckedAt   string             `json:"checked_at"`
+	Severity   ValidationSeverity `json:"severity"`
+	Message    string             `json:"message"`
+	Path       string             `json:"path,omitempty"`
+	Suggestion string             `json:"suggestion,omitempty"`
+	CheckedAt  string             `json:"checked_at"`
 }
 
 // BackupReport represents validation details for single backup folder
 type BackupReport struct {
-	BackupDir       string             `json:"backup_dir"`
-	Valid           bool               `json:"valid"`
-	Issues          []ValidationIssue  `json:"issues"`
-	CheckedAt       string             `json:"checked_at"`
-	ValidationStats ValidationStats    `json:"validation_stats"`
+	BackupDir       string            `json:"backup_dir"`
+	Valid           bool              `json:"valid"`
+	Issues          []ValidationIssue `json:"issues"`
+	CheckedAt       string            `json:"checked_at"`
+	ValidationStats ValidationStats   `json:"validation_stats"`
 }
 
-// ValidationStats provides detailed metrics about the validation process
+// ValidationStats provides detailed metrics about validation process
 type ValidationStats struct {
-	TotalFiles        int           `json:"total_files"`
-	ValidatedFiles    int           `json:"validated_files"`
-	CorruptFiles      int           `json:"corrupt_files"`
-	TotalSize         int64         `json:"total_size_bytes"`
-	ValidationTime    string        `json:"validation_time"`
-	CatalogFiles      int           `json:"catalog_files"`
-	BackupFiles       int           `json:"backup_files"`
-	OldestBackupTime  *time.Time    `json:"oldest_backup_time,omitempty"`
-	NewestBackupTime  *time.Time    `json:"newest_backup_time,omitempty"`
-	StructuralChecks  int           `json:"structural_checks_passed"`
-	ContentChecks     int           `json:"content_checks_passed"`
+	TotalFiles       int        `json:"total_files"`
+	ValidatedFiles   int        `json:"validated_files"`
+	CorruptFiles     int        `json:"corrupt_files"`
+	TotalSize        int64      `json:"total_size_bytes"`
+	ValidationTime   string     `json:"validation_time"`
+	CatalogFiles     int        `json:"catalog_files"`
+	BackupFiles      int        `json:"backup_files"`
+	OldestBackupTime *time.Time `json:"oldest_backup_time,omitempty"`
+	NewestBackupTime *time.Time `json:"newest_backup_time,omitempty"`
+	StructuralChecks int        `json:"structural_checks_passed"`
+	ContentChecks    int        `json:"content_checks_passed"`
 }
 
 // ScanReport represents results for one root path
@@ -83,14 +102,13 @@ type ScanReport struct {
 
 // LoadConfig loads JSON config file from given path with defaults
 func LoadConfig(path string) (*Config, error) {
-	// Set defaults
 	cfg := &Config{
 		CheckHash:                 false,
-		DeepValidation:           true,
-		MaxZipSampleSize:         100 * 1024 * 1024, // 100MB
+		DeepValidation:            true,
+		MaxZipSampleSize:          100 * 1024 * 1024, // 100MB
 		RequiredCatalogExtensions: []string{".wbcat"},
-		MinBackupAge:             "1h",  // Backups should be at least 1 hour old
-		MaxBackupAge:             "90d", // Warn if backups are older than 90 days
+		MinBackupAge:              "1h",
+		MaxBackupAge:              "90d",
 	}
 
 	file, err := os.Open(path)
@@ -111,7 +129,33 @@ func LoadConfig(path string) (*Config, error) {
 	return cfg, nil
 }
 
-// Validate checks if the configuration is valid
+// LoadEmailConfig loads email configuration from a separate file
+func LoadEmailConfig(path string) (*EmailConfig, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to open email config file: %w", err)
+	}
+	defer file.Close()
+
+	var emailCfg EmailConfig
+	decoder := json.NewDecoder(file)
+	if err := decoder.Decode(&emailCfg); err != nil {
+		return nil, fmt.Errorf("failed to parse email config file: %w", err)
+	}
+
+	if emailCfg.Enabled {
+		if err := emailCfg.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid email config: %w", err)
+		}
+	}
+
+	return &emailCfg, nil
+}
+
+// Validate checks if configuration is valid
 func (c *Config) Validate() error {
 	if len(c.BackupPaths) == 0 {
 		return fmt.Errorf("no backup paths specified in config")
@@ -134,6 +178,35 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("max_zip_sample_size cannot be negative")
 	}
 
+	if c.Email != nil && c.Email.Enabled {
+		if err := c.Email.Validate(); err != nil {
+			return fmt.Errorf("invalid email config: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// Validate checks if email configuration is valid
+func (e *EmailConfig) Validate() error {
+	if e.SMTPHost == "" {
+		return fmt.Errorf("smtp_host is required")
+	}
+	if e.SMTPPort <= 0 || e.SMTPPort > 65535 {
+		return fmt.Errorf("smtp_port must be between 1 and 65535")
+	}
+	if e.From == "" {
+		return fmt.Errorf("from address is required")
+	}
+	if len(e.To) == 0 {
+		return fmt.Errorf("at least one recipient (to) is required")
+	}
+	if e.Username == "" {
+		return fmt.Errorf("username is required for SMTP authentication")
+	}
+	if e.Password == "" {
+		return fmt.Errorf("password is required for SMTP authentication")
+	}
 	return nil
 }
 

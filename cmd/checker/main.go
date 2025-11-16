@@ -28,9 +28,11 @@ type ScanSummary struct {
 
 func main() {
 	jsonOnly := flag.Bool("json", false, "Output results as JSON only (no human-readable logs)")
-	jsonOut := flag.String("json-out", "", "Write JSON report to a file (NDJSON format if file already exists)")
+	jsonOut := flag.String("json-out", "logs.json", "Write JSON report to a file (NDJSON format)")
+	noLog := flag.Bool("no-log", false, "Disable writing to log file")
 	parallel := flag.Int("parallel", 4, "Number of backup sets to validate concurrently")
 	timeout := flag.Duration("timeout", 30*time.Minute, "Timeout for entire scan operation")
+	noEmail := flag.Bool("no-email", false, "Disable email notifications even if configured")
 	flag.Parse()
 
 	// Create context with timeout
@@ -39,6 +41,7 @@ func main() {
 
 	// Config location
 	configPath := filepath.Join("configs", "config.json")
+	emailConfigPath := filepath.Join("configs", "email.config.json")
 
 	// Load config
 	cfg, err := winbackupchecker.LoadConfig(configPath)
@@ -47,8 +50,21 @@ func main() {
 		os.Exit(2)
 	}
 
+	// Load email config (optional)
+	emailCfg, err := winbackupchecker.LoadEmailConfig(emailConfigPath)
+	if err != nil {
+		log.Printf("Error loading email config: %v", err)
+		os.Exit(2)
+	}
+
 	if !*jsonOnly {
 		fmt.Printf("Loaded config with %d backup paths, parallel workers: %d\n", len(cfg.BackupPaths), *parallel)
+		if emailCfg != nil && emailCfg.Enabled && !*noEmail {
+			fmt.Printf("Email notifications: enabled (to: %v)\n", emailCfg.To)
+		}
+		if !*noLog {
+			fmt.Printf("Logging to: %s\n", *jsonOut)
+		}
 	}
 
 	allReports := []winbackupchecker.ScanReport{}
@@ -82,9 +98,7 @@ func main() {
 		allReports = append(allReports, *report)
 	}
 
-	// Calculate summary
 	summary := calculateSummary(allReports, fatalErrors)
-
 	runReport := RunReport{
 		Timestamp: time.Now().Format(time.RFC3339),
 		Results:   allReports,
@@ -105,14 +119,34 @@ func main() {
 		fmt.Println(string(jsonData))
 	}
 
-	// Optional file output
-	if *jsonOut != "" {
+	// Write to log file (default behavior unless --no-log is set)
+	if !*noLog {
 		if err := writeJSONOutput(*jsonOut, runReport); err != nil {
 			log.Printf("Failed to write JSON output: %v", err)
 			os.Exit(2)
 		}
 		if !*jsonOnly {
-			fmt.Printf("Appended JSON report to %s\n", *jsonOut)
+			fmt.Printf("\nAppended report to %s\n", *jsonOut)
+		}
+	}
+
+	// Send email alert if configured
+	if !*noEmail && cfg.Email != nil && cfg.Email.Enabled {
+		if !*jsonOnly {
+			fmt.Println("\nSending email notification...")
+		}
+
+		emailSummary := winbackupchecker.ScanSummary{
+			TotalBackups:   summary.TotalBackups,
+			ValidBackups:   summary.ValidBackups,
+			InvalidBackups: summary.InvalidBackups,
+			FailedScans:    summary.FailedScans,
+		}
+
+		if err := winbackupchecker.SendEmailAlert(cfg.Email, emailSummary, allReports); err != nil {
+			log.Printf("Failed to send email alert: %v", err)
+		} else if !*jsonOnly {
+			fmt.Println("Email notification sent successfully")
 		}
 	}
 
@@ -152,9 +186,16 @@ func printSummary(summary ScanSummary) {
 }
 
 func writeJSONOutput(filename string, report RunReport) error {
-	line, err := json.Marshal(report)
+	// Marshal with indentation for readability
+	line, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal run report: %w", err)
+	}
+
+	// Check if file exists to determine format
+	fileExists := false
+	if info, err := os.Stat(filename); err == nil && info.Size() > 0 {
+		fileExists = true
 	}
 
 	f, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
@@ -162,6 +203,12 @@ func writeJSONOutput(filename string, report RunReport) error {
 		return fmt.Errorf("failed to open JSON output file: %w", err)
 	}
 	defer f.Close()
+
+	if fileExists {
+		if _, err := f.WriteString("\n---\n\n"); err != nil {
+			return fmt.Errorf("failed to write separator: %w", err)
+		}
+	}
 
 	if _, err := f.Write(append(line, '\n')); err != nil {
 		return fmt.Errorf("failed to write to JSON output file: %w", err)
@@ -186,11 +233,13 @@ func decideExitCode(fatalErrors []string, allReports []winbackupchecker.ScanRepo
 
 /*
 Usage:
-  go run ./cmd/checker/                                    # Check file backups
-  go run ./cmd/checker/ --json                             # JSON only
-  go run ./cmd/checker/ --json-out=logs.json               # Append JSON report to logs.json
+  go run ./cmd/checker/                                    # Check file backups (writes to logs.json by default)
+  go run ./cmd/checker/ --json                             # JSON only output
+  go run ./cmd/checker/ --json-out=custom.json             # Write to custom file
+  go run ./cmd/checker/ --no-log                           # Don't write to log file
   go run ./cmd/checker/ --parallel=8                       # Use 8 concurrent workers
   go run ./cmd/checker/ --timeout=1h                       # Set 1 hour timeout
+  go run ./cmd/checker/ --no-email                         # Disable email notifications
 
 Exit codes:
   0 = all backups valid

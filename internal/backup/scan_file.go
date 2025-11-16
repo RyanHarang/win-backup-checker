@@ -15,12 +15,12 @@ import (
 
 // BackupSetInfo contains metadata about a backup set
 type BackupSetInfo struct {
-	Path          string
-	Size          int64
-	FileCount     int
-	ModTime       time.Time
-	CatalogFiles  []string
-	BackupFiles   []string
+	Path         string
+	Size         int64
+	FileCount    int
+	ModTime      time.Time
+	CatalogFiles []string
+	BackupFiles  []string
 }
 
 func ScanFileBackupDir(ctx context.Context, root string, maxWorkers int) (*ScanReport, error) {
@@ -32,11 +32,11 @@ func ScanFileBackupDir(ctx context.Context, root string, maxWorkers int) (*ScanR
 	// Root must have MediaID.bin
 	mediaIDPath := filepath.Join(root, "MediaID.bin")
 	if !fileExists(mediaIDPath) {
-		issue := NewValidationIssue(SeverityCritical, 
-			"missing MediaID.bin at root", 
-			root, 
+		issue := NewValidationIssue(SeverityCritical,
+			"missing MediaID.bin at root",
+			root,
 			"ensure the backup root directory is correct and contains MediaID.bin")
-		
+
 		report.Reports = append(report.Reports, BackupReport{
 			BackupDir: root,
 			Valid:     false,
@@ -48,11 +48,11 @@ func ScanFileBackupDir(ctx context.Context, root string, maxWorkers int) (*ScanR
 
 	// Validate MediaID.bin
 	if err := validateMediaID(mediaIDPath); err != nil {
-		issue := NewValidationIssue(SeverityError, 
-			fmt.Sprintf("invalid MediaID.bin: %v", err), 
-			mediaIDPath, 
+		issue := NewValidationIssue(SeverityError,
+			fmt.Sprintf("invalid MediaID.bin: %v", err),
+			mediaIDPath,
 			"check if MediaID.bin is corrupted or from a different backup system")
-		
+
 		report.Reports = append(report.Reports, BackupReport{
 			BackupDir: root,
 			Valid:     false,
@@ -66,7 +66,6 @@ func ScanFileBackupDir(ctx context.Context, root string, maxWorkers int) (*ScanR
 	if err != nil {
 		return nil, fmt.Errorf("failed to discover backup sets: %w", err)
 	}
-
 
 	fmt.Printf("Found %d backup sets to validate\n", len(backupSets))
 
@@ -127,7 +126,7 @@ func discoverBackupSets(root string) ([]BackupSetInfo, error) {
 
 func gatherBackupSetInfo(setPath string) (*BackupSetInfo, error) {
 	info := &BackupSetInfo{
-		Path:        setPath,
+		Path:         setPath,
 		CatalogFiles: []string{},
 		BackupFiles:  []string{},
 	}
@@ -142,7 +141,7 @@ func gatherBackupSetInfo(setPath string) (*BackupSetInfo, error) {
 		}
 
 		ext := strings.ToLower(filepath.Ext(path))
-		
+
 		// Track file counts and sizes
 		info.FileCount++
 		info.Size += fileInfo.Size()
@@ -154,12 +153,10 @@ func gatherBackupSetInfo(setPath string) (*BackupSetInfo, error) {
 
 		// Categorize files
 		switch ext {
-		// case ".wbcat", ".cat":
-		// 	info.CatalogFiles = append(info.CatalogFiles, path)
 		case ".wbcat", ".cat":
-    if filepath.Base(filepath.Dir(path)) == "Catalogs" {
-        info.CatalogFiles = append(info.CatalogFiles, path)
-    }
+			if filepath.Base(filepath.Dir(path)) == "Catalogs" {
+				info.CatalogFiles = append(info.CatalogFiles, path)
+			}
 		case ".zip":
 			info.BackupFiles = append(info.BackupFiles, path)
 		}
@@ -176,7 +173,7 @@ func validateBackupSets(ctx context.Context, backupSets []BackupSetInfo, maxWork
 	}
 
 	reports := make([]BackupReport, len(backupSets))
-	
+
 	// Create worker pool
 	work := make(chan int, len(backupSets))
 	var wg sync.WaitGroup
@@ -236,7 +233,7 @@ func validateFileBackupSet(ctx context.Context, setInfo BackupSetInfo) BackupRep
 	stats.ContentChecks = contentStats.ContentChecks
 	stats.ValidatedFiles = contentStats.ValidatedFiles
 	stats.CorruptFiles = contentStats.CorruptFiles
-	
+
 	// Time-based validation
 	issues = append(issues, validateBackupAge(setInfo)...)
 
@@ -253,7 +250,7 @@ func validateFileBackupSet(ctx context.Context, setInfo BackupSetInfo) BackupRep
 		stats.NewestBackupTime = &setInfo.ModTime
 	}
 
-	// Determine validity (no critical or error issues)
+	// Determine validity
 	valid := true
 	for _, issue := range issues {
 		if issue.Severity >= SeverityError {
@@ -328,7 +325,7 @@ func validateBackupContent(ctx context.Context, setInfo BackupSetInfo) ([]Valida
 		}
 
 		stats.ValidatedFiles++
-		
+
 		if err := validateZipFile(zipPath); err != nil {
 			stats.CorruptFiles++
 			issues = append(issues, NewValidationIssue(SeverityError,
@@ -349,7 +346,7 @@ func validateBackupContent(ctx context.Context, setInfo BackupSetInfo) ([]Valida
 		}
 
 		stats.ValidatedFiles++
-		
+
 		if err := validateCatalogFile(catPath); err != nil {
 			stats.CorruptFiles++
 			issues = append(issues, NewValidationIssue(SeverityWarning,
@@ -366,7 +363,7 @@ func validateBackupContent(ctx context.Context, setInfo BackupSetInfo) ([]Valida
 
 func validateBackupAge(setInfo BackupSetInfo) []ValidationIssue {
 	issues := []ValidationIssue{}
-	
+
 	if setInfo.ModTime.IsZero() {
 		return issues
 	}
@@ -408,7 +405,7 @@ func validateZipFile(zipPath string) error {
 	testCount := minInt(len(r.File), 3)
 	for i := 0; i < testCount; i++ {
 		file := r.File[i]
-		
+
 		rc, err := file.Open()
 		if err != nil {
 			return fmt.Errorf("cannot open file %s in zip: %w", file.Name, err)
