@@ -161,7 +161,7 @@ func generateEmailBody(data EmailData) (string, error) {
     <div class="backup-set {{if .Valid}}valid{{else}}invalid{{end}}">
         <h3>{{base .BackupDir}}</h3>
         <p><span class="path">{{.BackupDir}}</span></p>
-        <p><strong>Status:</strong> {{if .Valid}}✅ Valid{{else}}❌ Invalid{{end}}</p>
+        <p><strong>Status:</strong> {{if .Valid}}Valid{{else}}Invalid{{end}}</p>
         
         <div class="stats">
             <div class="stat-item"><strong>Total Files:</strong> {{.ValidationStats.TotalFiles}}</div>
