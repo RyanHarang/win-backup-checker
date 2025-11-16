@@ -67,7 +67,7 @@ Here are SMTP settings for popular email providers:
 | `username`         | SMTP authentication username (usually your email) | Required           |
 | `password`         | SMTP authentication password (use app password)   | Required           |
 | `send_on_success`  | Send email when all backups are valid             | `false`            |
-| `send_on_warnings` | Send email when warnings are found                | `false`            |
+| `send_on_warnings` | Send email when warnings are found                | `true`             |
 | `send_on_errors`   | Send email when errors are found                  | `true`             |
 | `subject_prefix`   | Custom prefix for email subjects                  | `"[Backup Alert]"` |
 

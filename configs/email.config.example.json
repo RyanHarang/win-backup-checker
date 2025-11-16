@@ -7,7 +7,7 @@
     "username": "sender@example.com",
     "password": "password_or_app_specific_password",
     "send_on_success": false,
-    "send_on_warnings": false,
+    "send_on_warnings": true,
     "send_on_errors": true,
     "subject_prefix": "[Backup Alert]"
 }

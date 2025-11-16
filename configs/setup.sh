@@ -68,7 +68,7 @@ if [ "$CREATE_EMAIL" = true ]; then
   "username": "your-email@gmail.com",
   "password": "your-app-password",
   "send_on_success": false,
-  "send_on_warnings": false,
+  "send_on_warnings": true,
   "send_on_errors": true,
   "subject_prefix": "[Backup Alert]"
 }
