@@ -130,8 +130,7 @@ func main() {
 		}
 	}
 
-	// Send email alert if configured
-	if !*noEmail && cfg.Email != nil && cfg.Email.Enabled {
+	if !*noEmail && emailCfg != nil && emailCfg.Enabled {
 		if !*jsonOnly {
 			fmt.Println("\nSending email notification...")
 		}
@@ -143,7 +142,7 @@ func main() {
 			FailedScans:    summary.FailedScans,
 		}
 
-		if err := winbackupchecker.SendEmailAlert(cfg.Email, emailSummary, allReports); err != nil {
+		if err := winbackupchecker.SendEmailAlert(emailCfg, emailSummary, allReports); err != nil {
 			log.Printf("Failed to send email alert: %v", err)
 		} else if !*jsonOnly {
 			fmt.Println("Email notification sent successfully")
