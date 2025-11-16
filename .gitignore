@@ -37,3 +37,4 @@ Backups/*
 
 # Logs for testing
 logs.json
+configs/email.config.json

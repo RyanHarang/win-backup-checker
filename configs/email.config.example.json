@@ -1,0 +1,13 @@
+{
+    "enabled": true,
+    "smtp_host": "smtp.example.com",
+    "smtp_port": 587,
+    "from": "sender@example.com",
+    "to": ["recipient@example.com"],
+    "username": "sender@example.com",
+    "password": "password_or_app_specific_password",
+    "send_on_success": false,
+    "send_on_warnings": false,
+    "send_on_errors": true,
+    "subject_prefix": "[Backup Alert]"
+}
