@@ -29,6 +29,74 @@ func ScanFileBackupDir(ctx context.Context, root string, maxWorkers int) (*ScanR
 	report := &ScanReport{Root: root, Reports: []BackupReport{}}
 	startTime := time.Now()
 
+	// Check if this path directly contains MediaID.bin (single backup root)
+	mediaIDPath := filepath.Join(root, "MediaID.bin")
+	if fileExists(mediaIDPath) {
+		return scanSingleBackupRoot(ctx, root, maxWorkers)
+	}
+
+	// Otherwise, check if this is a parent directory containing multiple backup roots
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	foundBackups := false
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		subPath := filepath.Join(root, entry.Name())
+		subMediaIDPath := filepath.Join(subPath, "MediaID.bin")
+
+		// Check if this subdirectory is a backup root
+		if fileExists(subMediaIDPath) {
+			foundBackups = true
+			fmt.Printf("Found backup root: %s\n", entry.Name())
+
+			subReport, err := scanSingleBackupRoot(ctx, subPath, maxWorkers)
+			if err != nil {
+				report.Reports = append(report.Reports, BackupReport{
+					BackupDir: subPath,
+					Valid:     false,
+					Issues: []ValidationIssue{
+						NewValidationIssue(SeverityCritical,
+							fmt.Sprintf("failed to scan backup root: %v", err),
+							subPath,
+							"check path accessibility and permissions"),
+					},
+					CheckedAt: NowRFC3339(),
+				})
+				continue
+			}
+
+			report.Reports = append(report.Reports, subReport.Reports...)
+		}
+	}
+
+	if !foundBackups {
+		// No MediaID.bin found at this level or in subdirectories
+		issue := NewValidationIssue(SeverityCritical,
+			"no backup roots found (missing MediaID.bin)",
+			root,
+			"ensure the path contains backup roots with MediaID.bin files")
+
+		report.Reports = append(report.Reports, BackupReport{
+			BackupDir: root,
+			Valid:     false,
+			Issues:    []ValidationIssue{issue},
+			CheckedAt: NowRFC3339(),
+		})
+	}
+
+	fmt.Printf("Completed validation in %v\n", time.Since(startTime))
+	return report, nil
+}
+
+func scanSingleBackupRoot(ctx context.Context, root string, maxWorkers int) (*ScanReport, error) {
+	report := &ScanReport{Root: root, Reports: []BackupReport{}}
+
 	// Root must have MediaID.bin
 	mediaIDPath := filepath.Join(root, "MediaID.bin")
 	if !fileExists(mediaIDPath) {
@@ -67,13 +135,11 @@ func ScanFileBackupDir(ctx context.Context, root string, maxWorkers int) (*ScanR
 		return nil, fmt.Errorf("failed to discover backup sets: %w", err)
 	}
 
-	fmt.Printf("Found %d backup sets to validate\n", len(backupSets))
+	fmt.Printf("Found %d backup sets to validate in %s\n", len(backupSets), filepath.Base(root))
 
 	// Validate backup sets with controlled concurrency
 	reports := validateBackupSets(ctx, backupSets, maxWorkers)
 	report.Reports = append(report.Reports, reports...)
-
-	fmt.Printf("Completed validation in %v\n", time.Since(startTime))
 
 	return report, nil
 }
@@ -341,17 +407,19 @@ func findMissingBackupFiles(backupFiles []string) []string {
 		return nil
 	}
 
-	// Extract numbers from "Backup Files N.zip" or "Backup files N.zip" pattern
+	// Extract numbers from "Backup Files N.zip" pattern
 	numbers := make(map[int]bool)
 	minNum, maxNum := -1, -1
 
 	for _, path := range backupFiles {
 		base := filepath.Base(path)
+		// Try to extract number from various patterns:
+		// "Backup Files 1.zip", "BackupFiles1.zip", "Backup Files (1).zip"
 		var num int
-		base = strings.TrimSuffix(base, filepath.Ext(base))
-		baseLower := strings.ToLower(base)
 
-		if _, err := fmt.Sscanf(baseLower, "backup files %d", &num); err == nil {
+		base = strings.TrimSuffix(base, filepath.Ext(base))
+
+		if _, err := fmt.Sscanf(base, "Backup Files %d", &num); err == nil {
 			numbers[num] = true
 			if minNum == -1 || num < minNum {
 				minNum = num
@@ -359,15 +427,7 @@ func findMissingBackupFiles(backupFiles []string) []string {
 			if num > maxNum {
 				maxNum = num
 			}
-		} else if _, err := fmt.Sscanf(baseLower, "backup files (%d)", &num); err == nil {
-			numbers[num] = true
-			if minNum == -1 || num < minNum {
-				minNum = num
-			}
-			if num > maxNum {
-				maxNum = num
-			}
-		} else if _, err := fmt.Sscanf(baseLower, "backupfiles%d", &num); err == nil {
+		} else if _, err := fmt.Sscanf(base, "Backup Files (%d)", &num); err == nil {
 			numbers[num] = true
 			if minNum == -1 || num < minNum {
 				minNum = num
@@ -379,7 +439,6 @@ func findMissingBackupFiles(backupFiles []string) []string {
 	}
 
 	if minNum == -1 {
-		fmt.Println("DEBUG: No valid file numbers found!")
 		return nil
 	}
 
@@ -387,7 +446,7 @@ func findMissingBackupFiles(backupFiles []string) []string {
 	var missing []string
 	for i := minNum; i <= maxNum; i++ {
 		if !numbers[i] {
-			missing = append(missing, fmt.Sprintf("Backup files %d.zip", i))
+			missing = append(missing, fmt.Sprintf("Backup Files %d.zip", i))
 		}
 	}
 

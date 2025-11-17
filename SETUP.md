@@ -8,7 +8,6 @@ This guide walks through setting up the Windows Backup Checker.
 
 -   **Go 1.19 or later** installed ([Download Go](https://golang.org/dl/))
 -   **Git** installed ([Download Git](https://git-scm.com/downloads))
--   Access to your Windows File History backup directory
 -   (Optional) Email account for notifications
 
 ---
@@ -41,8 +40,8 @@ Edit `configs/config.json` and update the backup paths:
 ```json
 {
   "backup_paths": [
-    "/path/to/your/windows/file/history/backups",
-    "/path/to/another/backup/location"
+    "/path/to/directory/containing/multiple/backups",
+    "/or/path/to/single/backup/directly"
   ],
   ...
 }
@@ -82,15 +81,15 @@ Located in `configs/config.json`, this file controls the backup validation behav
 
 #### Configuration Options
 
-| Option                        | Description                                    | Default              |
-| ----------------------------- | ---------------------------------------------- | -------------------- |
-| `backup_paths`                | Array of backup root directories to validate   | Required             |
-| `check_hash`                  | Perform hash validation (not implemented yet)  | `false`              |
-| `deep_validation`             | Perform thorough content validation            | `true`               |
-| `max_zip_sample_size`         | Maximum bytes to read when testing ZIP files   | `104857600` (100MB)  |
-| `required_catalog_extensions` | Catalog file extensions to look for            | `[".wbcat", ".cat"]` |
-| `min_backup_age`              | Minimum age before considering backup complete | `"1h"`               |
-| `max_backup_age`              | Maximum age before warning about old backups   | `"90d"`              |
+| Option                        | Description                                                                  | Default              |
+| ----------------------------- | ---------------------------------------------------------------------------- | -------------------- |
+| `backup_paths`                | Array of directory containing backups or backup root directories to validate | Required             |
+| `check_hash`                  | Perform hash validation (not implemented yet)                                | `false`              |
+| `deep_validation`             | Perform thorough content validation                                          | `true`               |
+| `max_zip_sample_size`         | Maximum bytes to read when testing ZIP files                                 | `104857600` (100MB)  |
+| `required_catalog_extensions` | Catalog file extensions to look for                                          | `[".wbcat", ".cat"]` |
+| `min_backup_age`              | Minimum age before considering backup complete                               | `"1h"`               |
+| `max_backup_age`              | Maximum age before warning about old backups                                 | `"90d"`              |
 
 #### Duration Format
 
