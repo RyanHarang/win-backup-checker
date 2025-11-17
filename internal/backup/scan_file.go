@@ -164,6 +164,9 @@ func gatherBackupSetInfo(setPath string) (*BackupSetInfo, error) {
 		return nil
 	})
 
+	sort.Strings(info.BackupFiles)
+	sort.Strings(info.CatalogFiles)
+
 	return info, err
 }
 
@@ -227,6 +230,9 @@ func validateFileBackupSet(ctx context.Context, setInfo BackupSetInfo) BackupRep
 	issues = append(issues, validateBackupStructure(setInfo)...)
 	stats.StructuralChecks = countPassedChecks(issues, SeverityCritical, SeverityError)
 
+	// Completeness validation (warnings only)
+	issues = append(issues, validateBackupCompleteness(setInfo)...)
+
 	// Content validation
 	contentIssues, contentStats := validateBackupContent(ctx, setInfo)
 	issues = append(issues, contentIssues...)
@@ -250,7 +256,7 @@ func validateFileBackupSet(ctx context.Context, setInfo BackupSetInfo) BackupRep
 		stats.NewestBackupTime = &setInfo.ModTime
 	}
 
-	// Determine validity
+	// Determine validity (no critical or error issues)
 	valid := true
 	for _, issue := range issues {
 		if issue.Severity >= SeverityError {
@@ -310,6 +316,82 @@ func validateBackupStructure(setInfo BackupSetInfo) []ValidationIssue {
 	}
 
 	return issues
+}
+
+func validateBackupCompleteness(setInfo BackupSetInfo) []ValidationIssue {
+	issues := []ValidationIssue{}
+
+	// Check for sequential backup file numbering
+	if len(setInfo.BackupFiles) > 0 {
+		missing := findMissingBackupFiles(setInfo.BackupFiles)
+		if len(missing) > 0 {
+			missingStr := strings.Join(missing, ", ")
+			issues = append(issues, NewValidationIssue(SeverityWarning,
+				fmt.Sprintf("missing backup files in sequence: %s", missingStr),
+				setInfo.Path,
+				"some backup data may be incomplete or files were deleted"))
+		}
+	}
+
+	return issues
+}
+
+func findMissingBackupFiles(backupFiles []string) []string {
+	if len(backupFiles) == 0 {
+		return nil
+	}
+
+	// Extract numbers from "Backup Files N.zip" or "Backup files N.zip" pattern
+	numbers := make(map[int]bool)
+	minNum, maxNum := -1, -1
+
+	for _, path := range backupFiles {
+		base := filepath.Base(path)
+		var num int
+		base = strings.TrimSuffix(base, filepath.Ext(base))
+		baseLower := strings.ToLower(base)
+
+		if _, err := fmt.Sscanf(baseLower, "backup files %d", &num); err == nil {
+			numbers[num] = true
+			if minNum == -1 || num < minNum {
+				minNum = num
+			}
+			if num > maxNum {
+				maxNum = num
+			}
+		} else if _, err := fmt.Sscanf(baseLower, "backup files (%d)", &num); err == nil {
+			numbers[num] = true
+			if minNum == -1 || num < minNum {
+				minNum = num
+			}
+			if num > maxNum {
+				maxNum = num
+			}
+		} else if _, err := fmt.Sscanf(baseLower, "backupfiles%d", &num); err == nil {
+			numbers[num] = true
+			if minNum == -1 || num < minNum {
+				minNum = num
+			}
+			if num > maxNum {
+				maxNum = num
+			}
+		}
+	}
+
+	if minNum == -1 {
+		fmt.Println("DEBUG: No valid file numbers found!")
+		return nil
+	}
+
+	// Find missing numbers in sequence
+	var missing []string
+	for i := minNum; i <= maxNum; i++ {
+		if !numbers[i] {
+			missing = append(missing, fmt.Sprintf("Backup files %d.zip", i))
+		}
+	}
+
+	return missing
 }
 
 func validateBackupContent(ctx context.Context, setInfo BackupSetInfo) ([]ValidationIssue, ValidationStats) {
