@@ -387,6 +387,8 @@ func validateBackupStructure(setInfo BackupSetInfo) []ValidationIssue {
 func validateBackupCompleteness(setInfo BackupSetInfo) []ValidationIssue {
 	issues := []ValidationIssue{}
 
+	fmt.Printf("DEBUG: Checking completeness for %s with %d backup files\n", filepath.Base(setInfo.Path), len(setInfo.BackupFiles))
+
 	// Check for sequential backup file numbering
 	if len(setInfo.BackupFiles) > 0 {
 		missing := findMissingBackupFiles(setInfo.BackupFiles)
@@ -407,19 +409,17 @@ func findMissingBackupFiles(backupFiles []string) []string {
 		return nil
 	}
 
-	// Extract numbers from "Backup Files N.zip" pattern
+	// Extract numbers from "Backup Files N.zip" or "Backup files N.zip" pattern
 	numbers := make(map[int]bool)
 	minNum, maxNum := -1, -1
 
 	for _, path := range backupFiles {
 		base := filepath.Base(path)
-		// Try to extract number from various patterns:
-		// "Backup Files 1.zip", "BackupFiles1.zip", "Backup Files (1).zip"
 		var num int
-
 		base = strings.TrimSuffix(base, filepath.Ext(base))
+		baseLower := strings.ToLower(base)
 
-		if _, err := fmt.Sscanf(base, "Backup Files %d", &num); err == nil {
+		if _, err := fmt.Sscanf(baseLower, "backup files %d", &num); err == nil {
 			numbers[num] = true
 			if minNum == -1 || num < minNum {
 				minNum = num
@@ -427,7 +427,15 @@ func findMissingBackupFiles(backupFiles []string) []string {
 			if num > maxNum {
 				maxNum = num
 			}
-		} else if _, err := fmt.Sscanf(base, "Backup Files (%d)", &num); err == nil {
+		} else if _, err := fmt.Sscanf(baseLower, "backup files (%d)", &num); err == nil {
+			numbers[num] = true
+			if minNum == -1 || num < minNum {
+				minNum = num
+			}
+			if num > maxNum {
+				maxNum = num
+			}
+		} else if _, err := fmt.Sscanf(baseLower, "backupfiles%d", &num); err == nil {
 			numbers[num] = true
 			if minNum == -1 || num < minNum {
 				minNum = num
@@ -442,11 +450,10 @@ func findMissingBackupFiles(backupFiles []string) []string {
 		return nil
 	}
 
-	// Find missing numbers in sequence
 	var missing []string
 	for i := minNum; i <= maxNum; i++ {
 		if !numbers[i] {
-			missing = append(missing, fmt.Sprintf("Backup Files %d.zip", i))
+			missing = append(missing, fmt.Sprintf("Backup files %d.zip", i))
 		}
 	}
 
